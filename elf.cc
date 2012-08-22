@@ -154,6 +154,66 @@ ElfObject::findSectionByName(std::string name)
     return 0;
 }
 
+
+template <typename Object, size_t size = sizeof (Object)> class ReaderIterator;
+template <typename Object, size_t size = sizeof (Object)> class SectionIterable {
+    ElfObject *obj;
+    Elf_Shdr *shdr;
+public:
+    off_t link;
+    SectionIterable(ElfObject *obj_, std::string sectionName)
+        : obj(obj_)
+        , shdr(obj->findSectionByName(sectionName))
+    {
+        link = shdr ? shdr->sh_link : 0;
+    }
+    inline ReaderIterator<Object, size> begin();
+    inline ReaderIterator<Object, size> end();
+};
+
+template <typename Object, size_t size> class ReaderIterator {
+    const Reader &reader;
+    off_t offset;
+    off_t end;
+    Object o;
+public:
+    ReaderIterator(Reader &reader_, off_t offset_, off_t end_)
+        : reader(reader_)
+        , offset(offset_)
+        , end(end_)
+    {}
+
+    Object &cur(Object &o) {
+        reader.readObj(offset, &o);
+        return o;
+    }
+
+    const Object operator *() { Object o; return cur(o); }
+    const void operator ++() { offset += size; }
+
+    const bool operator == (const ReaderIterator<Object, size> &rhs) {
+        return offset == rhs.offset;
+    }
+
+    const bool operator != (const ReaderIterator<Object, size> &rhs) {
+        return offset != rhs.offset;
+    }
+
+};
+
+template <typename O, size_t size> 
+ReaderIterator<O, size> SectionIterable<O, size>::begin() {
+    return ReaderIterator<O, size>(
+        obj->io, shdr->sh_offset, shdr->sh_offset + shdr->sh_size);
+}
+
+template <typename O, size_t size> 
+ReaderIterator<O, size> SectionIterable<O, size>::end() {
+    return ReaderIterator<O, size>(
+        obj->io, shdr->sh_offset + shdr->sh_size, shdr->sh_offset + shdr->sh_size);
+}
+
+
 /*
  * Find the symbol that represents a particular address.
  * If we fail to find a symbol whose virtual range includes our target address
@@ -174,21 +234,9 @@ ElfObject::findSymbolByAddress(Elf_Addr addr, int type, Elf_Sym &sym, std::strin
     bool exact = false;
     Elf_Addr lowest = 0;
     for (size_t i = 0; sectionNames[i] && !exact; i++) {
-        Elf_Shdr *symSection = findSectionByName(sectionNames[i]);
-        if (symSection == 0)
-            continue;
-        /*
-         * Found the section in question: get the associated
-         * string section's data, and a pointer to the start
-         * and end of the table
-         */
-        off_t symoff = symSection->sh_offset;
-        off_t symend = symoff + symSection->sh_size;
-        off_t stringoff = sectionHeaders[symSection->sh_link]->sh_offset;
+        SectionIterable<Elf_Sym> iter(this, sectionNames[i]);
 
-        Elf_Sym candidate;
-        for (; symoff < symend && !exact; symoff += sizeof sym) {
-            io.readObj(symoff, &candidate);
+        for (Elf_Sym candidate : iter) {
             if (candidate.st_shndx >= sectionHeaders.size())
                 continue;
             Elf_Shdr *shdr = sectionHeaders[candidate.st_shndx];
@@ -204,12 +252,12 @@ ElfObject::findSymbolByAddress(Elf_Addr addr, int type, Elf_Sym &sym, std::strin
                 if (candidate.st_size + candidate.st_value > addr) {
                     // yep: return this one.
                     sym = candidate;
-                    name = readString(candidate.st_name + stringoff);
+                    name = readString(candidate.st_name + iter.link);
                     return true;
                 }
             } else if (lowest < candidate.st_value) {
                 sym = candidate;
-                name = readString(candidate.st_name + stringoff);
+                name = readString(candidate.st_name + iter.link);
                 lowest = candidate.st_value;
             }
         }
