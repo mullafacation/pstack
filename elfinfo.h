@@ -116,6 +116,7 @@ struct ElfObject {
     void init(FILE *);
     std::shared_ptr<ElfSymHash> hash;
 public:
+    std::string origName;
     std::map<std::string, const Elf_Shdr *> namedSection;
     Elf_Shdr *findSectionByName(std::string name);
     bool findSymbolByAddress(Elf_Addr addr, int type, Elf_Sym &, std::string &);
@@ -123,6 +124,7 @@ public:
     SymbolSection getSymbols(size_t secno);
     std::string getABIPrefix();
     ElfObject(std::shared_ptr<Reader>);
+    ElfObject(std::string name);
     ~ElfObject();
     Elf_Shdr *getSection(size_t idx) const {
         if (idx >= sectionHeaders.size())

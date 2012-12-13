@@ -1,13 +1,39 @@
 #include "reader.h"
+#include <unistd.h>
 #include <iostream>
 #include <fcntl.h>
 #include <assert.h>
 
-FileReader::FileReader(std::string name_, int file_)
+using std::string;
+
+string
+linkResolve(string name)
+{
+    char buf[1024];
+    int rc;
+    for (;;) {
+        rc = readlink(name.c_str(), buf, sizeof buf - 1);
+        if (rc == -1)
+            break;
+        buf[rc] = 0;
+        std::clog << "resolve " << name << " to " << buf << std::endl;
+
+        if (buf[0] != '/') {
+            auto lastSlash = name.rfind('/');
+            name = lastSlash == string::npos ? string(buf) : name.substr(0, lastSlash + 1) + string(buf);
+        } else {
+            name = buf;
+        }
+    }
+    return name;
+}
+
+FileReader::FileReader(string name_, int file_)
     : name(name_)
     , file(file_)
 {
-    static std::string pfx = "/usr/lib/debug/";
+    name = linkResolve(name);
+    static string pfx = "/usr/lib/debug/";
     if (file == -1
         && (file = open((pfx + name).c_str(), O_RDONLY)) == -1
         && (file = open(name.c_str(), O_RDONLY)) == -1)
@@ -27,16 +53,17 @@ MemReader::read(off_t off, size_t count, char *ptr) const
     return rc;
 }
 
-std::string MemReader::describe() const
+string
+MemReader::describe() const
 {
     return "from memory image";
 }
 
-std::string
+string
 Reader:: readString(off_t offset) const
 {
     char c;
-    std::string res;
+    string res;
     for (;;) {
         readObj(offset++, &c);
         if (c == 0)

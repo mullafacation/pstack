@@ -62,3 +62,4 @@ public:
     MemReader(char *, size_t);
     std::string describe() const;
 };
+std::string linkResolve(std::string name);
