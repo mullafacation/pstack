@@ -28,16 +28,29 @@ linkResolve(string name)
     return name;
 }
 
+bool
+FileReader::openfile(int &file, std::string name_)
+{
+    auto fd = open(name_.c_str(), O_RDONLY);
+    if (fd != -1) {
+        std::clog << "opened " << name_ << " for dependency " << name << std::endl;
+        file = fd;
+        name = name_;
+        return true;
+    }
+    return false;
+}
+
 FileReader::FileReader(string name_, int file_)
     : name(name_)
     , file(file_)
 {
-    name = linkResolve(name);
-    static string pfx = "/usr/lib/debug/";
-    if (file == -1
-        && (file = open((pfx + name).c_str(), O_RDONLY)) == -1
-        && (file = open(name.c_str(), O_RDONLY)) == -1)
-        throw Exception() << "cannot open file '" << name << "': " << strerror(errno);
+    if (file == -1) {
+        name_ = linkResolve(name_);
+        static string pfx = "/usr/lib/debug/";
+        if (file == -1 && !openfile(file, pfx + name_) && !openfile(file, name_))
+            throw Exception() << "cannot open file '" << name_ << "': " << strerror(errno);
+    }
 }
 
 MemReader::MemReader(char *data_, size_t len_)

@@ -17,7 +17,9 @@
 #include "dwarf.h"
 #include "dump.h"
 
-extern int gVerbose;
+using std::string;
+using std::make_shared;
+using std::shared_ptr;
 
 uintmax_t
 DWARFReader::getuint(int len)
@@ -88,7 +90,7 @@ DWARFReader::gets8()
     return q;
 }
 
-std::string
+string
 DWARFReader::getstring()
 {
     std::ostringstream s;
@@ -165,7 +167,7 @@ DwarfPubnameUnit::DwarfPubnameUnit(DWARFReader &r)
     }
 }
 
-DwarfInfo::DwarfInfo(std::shared_ptr<ElfObject> obj)
+DwarfInfo::DwarfInfo(shared_ptr<ElfObject> obj)
     : elf(obj)
     , version(2)
     , info(obj->namedSection[".debug_info"])
@@ -308,7 +310,7 @@ DwarfUnit::DwarfUnit(const DwarfInfo *di, DWARFReader &r)
     r.setOffset(nextoff);
 }
 
-std::string
+string
 DwarfUnit::name() const
 {
     if (!entries.empty())
@@ -386,7 +388,7 @@ DwarfLineInfo::build(DWARFReader &r, const DwarfUnit *unit)
     directories.push_back("(compiler CWD)");
     int count;
     for (count = 0;; count++) {
-        std::string s = r.getstring();
+        string s = r.getstring();
         if (s == "")
             break;
         directories.push_back(s);
@@ -492,7 +494,7 @@ DwarfLineInfo::build(DWARFReader &r, const DwarfUnit *unit)
 }
 
 
-DwarfFileEntry::DwarfFileEntry(std::string name_, std::string dir_, unsigned lastMod_, unsigned length_)
+DwarfFileEntry::DwarfFileEntry(string name_, string dir_, unsigned lastMod_, unsigned length_)
     : name(name_)
     , directory(dir_)
     , lastMod(lastMod_)
@@ -970,7 +972,7 @@ DwarfCIE::DwarfCIE(const DwarfInfo *info_, DWARFReader &r, Elf_Off end_)
     #error "no default address encoding"
 #endif
 
-    std::string::iterator it = augmentation.begin();
+    string::iterator it = augmentation.begin();
     if (it != augmentation.end()) {
         if (*it == 'z') {
             augSize = r.getuleb128();
@@ -1169,8 +1171,8 @@ dwarfUnwind(Process &p, DwarfRegisters *regs, Elf_Addr procaddr)
     int i;
     DwarfRegisters newRegs;
     DwarfRegisterUnwind *unwind;
-    std::pair<Elf_Addr, std::shared_ptr<ElfObject>> elf = p.findObject(procaddr);
-    std::shared_ptr<DwarfInfo> dwarf = p.getDwarf(elf.second);
+    std::pair<Elf_Addr, shared_ptr<ElfObject>> elf = p.findObject(procaddr);
+    shared_ptr<DwarfInfo> dwarf = p.getDwarf(elf.second);
     Elf_Off objaddr = procaddr - elf.first; // relocate process address to object address
 
     const DwarfFDE *fde = dwarf->debugFrame ? dwarf->debugFrame->findFDE(objaddr) : 0;

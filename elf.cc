@@ -1,14 +1,18 @@
 #include <limits>
 #include "elfinfo.h"
 
+using std::string;
+using std::make_shared;
+using std::shared_ptr;
+
 std::ostream *debug;
-static uint32_t elf_hash(std::string);
+static uint32_t elf_hash(string);
 
 /*
  * Parse out an ELF file into an ElfObject structure.
  */
 
-const std::shared_ptr<Elf_Phdr>
+const shared_ptr<Elf_Phdr>
 ElfObject::findHeaderForAddress(Elf_Off a) const
 {
     for (auto &hdr : programHeaders)
@@ -17,13 +21,23 @@ ElfObject::findHeaderForAddress(Elf_Off a) const
     return 0;
 }
 
-ElfObject::ElfObject(std::string name) : ElfObject(std::make_shared<FileReader>(resolveLink(name)))
+ElfObject::ElfObject(string name_)
 {
+    name = name_;
+    init(make_shared<FileReader>(linkResolve(name)));
 }
-ElfObject::ElfObject(std::shared_ptr<Reader> io_)
-    : io(std::make_shared<CacheReader>(io_))
-    , dynamic(0)
+
+ElfObject::ElfObject(shared_ptr<Reader> io_)
 {
+    name = io_->describe();
+    init(io_);
+}
+
+void
+ElfObject::init(const shared_ptr<Reader> &io_)
+{
+    io = io_;
+    dynamic = 0;
     int i;
     size_t off;
     io->readObj(0, &elfHeader);
@@ -62,22 +76,24 @@ ElfObject::ElfObject(std::shared_ptr<Reader> io_)
 
     if (elfHeader.e_shstrndx != SHN_UNDEF) {
         auto sshdr = sectionHeaders[elfHeader.e_shstrndx];
-        for (auto &h : sectionHeaders)
-            namedSection[io->readString(sshdr->sh_offset + h->sh_name)] = h.get();
+        for (auto &h : sectionHeaders) {
+            auto name = io->readString(sshdr->sh_offset + h->sh_name);
+            namedSection[name] = h.get();
+        }
         auto tab = namedSection[".hash"];
-        if (tab)
+        if (tab && tab->sh_type == SHT_HASH)
             hash.reset(new ElfSymHash(this, tab));
     } else {
         hash = 0;
     }
 }
 
-std::pair<const Elf_Sym, const std::string>
+std::pair<const Elf_Sym, const string>
 SymbolIterator::operator *()
 {
         Elf_Sym sym;
         io->readObj(off, &sym);
-        std::string name = io->readString(sym.st_name + stroff);
+        string name = io->readString(sym.st_name + stroff);
         return std::make_pair(sym, name);
 }
 
@@ -91,7 +107,7 @@ SymbolIterator::operator *()
  * the only symbol in the image, and it has no size.
  */
 bool
-ElfObject::findSymbolByAddress(Elf_Addr addr, int type, Elf_Sym &sym, std::string &name)
+ElfObject::findSymbolByAddress(Elf_Addr addr, int type, Elf_Sym &sym, string &name)
 {
 
     /* Try to find symbols in these sections */
@@ -148,7 +164,7 @@ ElfObject::getSymbols(size_t section)
 }
 
 bool
-ElfObject::linearSymSearch(const Elf_Shdr *hdr, std::string name, Elf_Sym &sym)
+ElfObject::linearSymSearch(const Elf_Shdr *hdr, string name, Elf_Sym &sym)
 {
     SymbolSection sec(this, hdr);
     for (auto info : sec) {
@@ -178,13 +194,13 @@ ElfSymHash::ElfSymHash(ElfObject *obj_, const Elf_Shdr *hash_)
 }
 
 bool
-ElfSymHash::findSymbol(Elf_Sym &sym, std::string &name)
+ElfSymHash::findSymbol(Elf_Sym &sym, string &name)
 {
     uint32_t bucket = elf_hash(name) % nbucket;
     for (Elf_Word i = buckets[bucket]; i != STN_UNDEF; i = chains[i]) {
         Elf_Sym candidate;
         obj->io->readObj(syms->sh_offset + i * sizeof candidate, &candidate);
-        std::string candidateName = obj->io->readString(strings + candidate.st_name);
+        string candidateName = obj->io->readString(strings + candidate.st_name);
         if (candidateName == name) {
             sym = candidate;
             name = candidateName;
@@ -198,7 +214,7 @@ ElfSymHash::findSymbol(Elf_Sym &sym, std::string &name)
  * Locate a named symbol in an ELF image.
  */
 bool
-ElfObject::findSymbolByName(std::string name, Elf_Sym &sym)
+ElfObject::findSymbolByName(string name, Elf_Sym &sym)
 {
     if (hash && hash->findSymbol(sym, name))
         return true;
@@ -240,7 +256,7 @@ elfImageNote(void *cookie, const char *name, u_int32_t type,
 
 #endif
 
-std::string
+string
 ElfObject::getImageFromCore()
 {
 #ifdef __FreeBSD__
@@ -254,7 +270,7 @@ ElfObject::getImageFromCore()
 /*
  * Attempt to find a prefix to an executable ABI's "emulation tree"
  */
-std::string
+string
 ElfObject::getABIPrefix()
 {
 #ifdef __FreeBSD__
@@ -302,7 +318,7 @@ ElfObject::~ElfObject()
  * Culled from System V Application Binary Interface
  */
 static uint32_t
-elf_hash(std::string name)
+elf_hash(string name)
 {
     uint32_t h = 0, g;
     for (auto c : name) {

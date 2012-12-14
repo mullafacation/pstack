@@ -115,8 +115,9 @@ struct ElfObject {
     bool linearSymSearch(const Elf_Shdr *hdr, std::string name, Elf_Sym &);
     void init(FILE *);
     std::shared_ptr<ElfSymHash> hash;
+    void init(const std::shared_ptr<Reader> &); // want constructor chaining
 public:
-    std::string origName;
+    std::string name;
     std::map<std::string, const Elf_Shdr *> namedSection;
     Elf_Shdr *findSectionByName(std::string name);
     bool findSymbolByAddress(Elf_Addr addr, int type, Elf_Sym &, std::string &);

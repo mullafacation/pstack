@@ -172,7 +172,7 @@ Process::processAUXV(const void *datap, size_t len)
                 if (debug)
                     *debug << "filename from auxv: " << exeName << "\n";
                 if (execImage == 0)
-                    execImage = std::make_shared<ElfObject>(std::make_shared<FileReader>(exeName));
+                    execImage = std::make_shared<ElfObject>(exeName);
                 break;
         }
     }
@@ -346,7 +346,7 @@ Process::loadSharedObjects(Elf_Addr rdebugAddr)
             path = execImage->interpreterName;
         }
         try {
-            addElfObject(std::make_shared<ElfObject>(std::make_shared<FileReader>(path)), Elf_Addr(map.l_addr));
+            addElfObject(std::make_shared<ElfObject>(path), Elf_Addr(map.l_addr));
         }
         catch (const std::exception &e) {
             std::clog << "warning: can't load text for '" << path << "' at " <<
@@ -402,7 +402,7 @@ Process::findNamedSymbol(const char *objectName, const char *symbolName) const
     for (auto &i : objects) {
         auto obj = i.second;
         if (objectName != 0) {
-            auto objname = obj->io->describe();
+            auto objname = obj->name;
             auto p = objname.rfind('/');
             if (p != std::string::npos)
                 objname = objname.substr(p + 1, std::string::npos);
