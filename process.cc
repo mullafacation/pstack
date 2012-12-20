@@ -99,7 +99,6 @@ Process::Process(std::shared_ptr<ElfObject> exec, std::shared_ptr<Reader> io_)
     , sysent(0)
     , agent(0)
 {
-    abiPrefix = execImage->getABIPrefix();
 }
 
 void
@@ -163,10 +162,9 @@ Process::processAUXV(const void *datap, size_t len)
                 vdso = new char[getpagesize()];
                 io->readObj(hdr, vdso, getpagesize());
                 auto elf = std::make_shared<ElfObject>(std::make_shared<MemReader>(vdso, getpagesize()));
-                addElfObject(elf, hdr - elf->base);
+                addElfObject(elf, hdr - elf->getBase());
                 break;
             }
-
             case AT_EXECFN:
                 auto exeName = io->readString(hdr);
                 if (debug)
@@ -312,7 +310,7 @@ Process::addElfObject(std::shared_ptr<ElfObject> obj, Elf_Addr load)
         *debug
             << "object " << obj->io->describe()
             << " loaded at address " << std::hex << load
-            << ", base=" << obj->base << std::endl;
+            << ", base=" << obj->getBase() << std::endl;
 }
 
 /*
@@ -331,7 +329,7 @@ Process::loadSharedObjects(Elf_Addr rdebugAddr)
         io->readObj(mapAddr, &map);
         // first one's the executable itself.
         if (mapAddr == Elf_Addr(rDebug.r_map)) {
-            assert(map.l_addr == entry - execImage->elfHeader.e_entry);
+            assert(map.l_addr == entry - execImage->getElfHeader().e_entry);
             addElfObject(execImage, map.l_addr);
             continue;
         }
@@ -343,7 +341,7 @@ Process::loadSharedObjects(Elf_Addr rdebugAddr)
         std::string path = io->readString(Elf_Off(map.l_name));
         if (path == "") {
             // XXX: dunno why this is.
-            path = execImage->interpreterName;
+            path = execImage->getInterpreter();
         }
         try {
             addElfObject(std::make_shared<ElfObject>(path), Elf_Addr(map.l_addr));
@@ -360,22 +358,21 @@ Elf_Addr
 Process::findRDebugAddr()
 {
     // Find DT_DEBUG in the process's dynamic section.
-    auto dynamic = execImage->dynamic;
-    if (dynamic == 0)
-        return 0;
-
-    Elf_Off reloc = entry - execImage->elfHeader.e_entry;
-
-    // the dynamic section is in the executable, but the process A/S contains
-    // the modified version.
-    for (Elf_Addr dynOff = 0; dynOff < dynamic->p_filesz; dynOff += sizeof(Elf_Dyn)) {
-        Elf_Dyn dyn;
-        execImage->io->readObj(dynamic->p_offset + dynOff, &dyn);
-        if (dyn.d_tag == DT_DEBUG) {
-            // Now, we read this from the _process_ AS, not the executable - the
-            // in-memory one is changed by the linker.
-            io->readObj(dynamic->p_vaddr + dynOff + reloc, &dyn);
-            return dyn.d_un.d_ptr;
+    for (auto segment : execImage->getSegments()) {
+        if (segment.p_type != PT_DYNAMIC)
+            continue;
+        Elf_Off reloc = entry - execImage->getElfHeader().e_entry;
+        // the dynamic section is in the executable, but the process A/S contains
+        // the modified version.
+        for (Elf_Addr dynOff = 0; dynOff < segment.p_filesz; dynOff += sizeof(Elf_Dyn)) {
+            Elf_Dyn dyn;
+            execImage->io->readObj(segment.p_offset + dynOff, &dyn);
+            if (dyn.d_tag == DT_DEBUG) {
+                // Now, we read this from the _process_ AS, not the executable - the
+                // in-memory one is changed by the linker.
+                io->readObj(segment.p_vaddr + dynOff + reloc, &dyn);
+                return dyn.d_un.d_ptr;
+            }
         }
     }
     return 0;
@@ -386,9 +383,9 @@ std::pair<Elf_Off, std::shared_ptr<ElfObject>>
 Process::findObject(Elf_Addr addr) const
 {
     for (auto &i : objects)
-        for (auto &phdr : i.second->programHeaders) {
+        for (auto &phdr : i.second->getSegments()) {
             Elf_Off reloc = addr - i.first;
-            if (reloc >= phdr->p_vaddr && reloc < phdr->p_vaddr + phdr->p_memsz)
+            if (reloc >= phdr.p_vaddr && reloc < phdr.p_vaddr + phdr.p_memsz)
                 return i;
         }
     throw Exception() << "no loaded object at address 0x" << std::hex << addr;
@@ -402,7 +399,7 @@ Process::findNamedSymbol(const char *objectName, const char *symbolName) const
     for (auto &i : objects) {
         auto obj = i.second;
         if (objectName != 0) {
-            auto objname = obj->name;
+            auto objname = obj->getName();
             auto p = objname.rfind('/');
             if (p != std::string::npos)
                 objname = objname.substr(p + 1, std::string::npos);

@@ -45,12 +45,17 @@ FileReader::FileReader(string name_, int file_)
     : name(name_)
     , file(file_)
 {
+#if 0
     if (file == -1) {
         name_ = linkResolve(name_);
         static string pfx = "/usr/lib/debug/";
-        if (file == -1 && !openfile(file, pfx + name_) && !openfile(file, name_))
+        if (!openfile(file, pfx + name_) && !openfile(file, name_))
             throw Exception() << "cannot open file '" << name_ << "': " << strerror(errno);
     }
+#else
+    if (file == -1 && !openfile(file, name_))
+        throw Exception() << "cannot open file '" << name_ << "': " << strerror(errno);
+#endif
 }
 
 MemReader::MemReader(char *data_, size_t len_)

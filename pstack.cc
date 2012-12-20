@@ -109,7 +109,7 @@ emain(int argc, char **argv)
         if (pid == 0 || (kill(pid, 0) == -1 && errno == ESRCH)) {
             // It's a file: should be ELF, treat core and exe differently
             auto obj = std::make_shared<ElfObject>(std::make_shared<FileReader>(argv[i]));
-            if (obj->elfHeader.e_type == ET_CORE) {
+            if (obj->getElfHeader().e_type == ET_CORE) {
                 CoreProcess proc(exec, obj);
                 proc.load();
                 proc.pstack(std::cout);

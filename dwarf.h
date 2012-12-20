@@ -320,23 +320,6 @@ public:
     ~DwarfInfo();
 };
 
-void dwarfDump(FILE *out, int, const DwarfInfo *info);
-DwarfInfo *dwarfLoad(Process *, struct ElfObject *obj, FILE *errs);
-const DwarfAbbreviation *dwarfUnitGetAbbrev(const DwarfUnit *unit, intmax_t code);
-void dwarfDumpSpec(FILE *out, int indent, const DwarfAttributeSpec *spec);
-void dwarfDumpAbbrev(FILE *out, int indent, const DwarfAbbreviation *abbrev);
-void dwarfDumpUnit(FILE *, int indent, const DwarfInfo *, const DwarfUnit *);
-const char *dwarfSOpcodeName(enum DwarfLineSOpcode code);
-const char *dwarfEOpcodeName(enum DwarfLineEOpcode code);
-int dwarfComputeCFA(Process *, const DwarfInfo *, DwarfFDE *, DwarfCallFrame *, DwarfRegisters *, uintmax_t addr);
-void dwarfArchGetRegs(const gregset_t *regs, uintmax_t *dwarfRegs);
-uintmax_t dwarfGetReg(const DwarfRegisters *regs, int regno);
-void dwarfSetReg(DwarfRegisters *regs, int regno, uintmax_t regval);
-DwarfRegisters *dwarfPtToDwarf(DwarfRegisters *dwarf, const CoreRegisters *sys);
-const DwarfRegisters *dwarfDwarfToPt(CoreRegisters *sys, const DwarfRegisters *dwarf);
-
-/* Linux extensions: */
-
 enum DwarfCFAInstruction {
 
     DW_CFA_advance_loc          = 0x40, // XXX: Lower 6 = delta
@@ -418,6 +401,12 @@ public:
     void skip(Elf_Off amount) { off += amount; }
 };
 
+uintmax_t dwarfGetReg(const DwarfRegisters *regs, int regno);
+void dwarfSetReg(DwarfRegisters *regs, int regno, uintmax_t regval);
+DwarfRegisters *dwarfPtToDwarf(DwarfRegisters *dwarf, const CoreRegisters *sys);
+const DwarfRegisters *dwarfDwarfToPt(CoreRegisters *sys, const DwarfRegisters *dwarf);
+Elf_Addr dwarfUnwind(Process &, DwarfRegisters *, Elf_Addr);
+
 
 #define DWARF_OP(op, value, args) op = value,
 
@@ -443,5 +432,4 @@ enum DwarfExpressionOp {
 #define DW_EH_PE_datarel        0x30
 #define DW_EH_PE_funcrel        0x40
 #define DW_EH_PE_aligned        0x50
-Elf_Addr dwarfUnwind(Process &, DwarfRegisters *, Elf_Addr);
 #endif
