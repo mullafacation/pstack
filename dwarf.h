@@ -300,10 +300,12 @@ class DwarfInfo {
     mutable std::list<DwarfARangeSet> aranges;
     mutable std::map<Elf_Off, DwarfUnit> unitsm;
     const mutable Elf_Shdr *info, *debstr, *pubnamesh, *arangesh, *debug_frame;
+    DwarfInfo(std::shared_ptr<ElfObject> object);
 public:
     const Elf_Shdr *abbrev, *lineshdr;
     // interesting shdrs from the exe.
-    std::shared_ptr<ElfObject> elf;
+    std::shared_ptr<ElfObject> run;
+    std::shared_ptr<ElfObject> debug;
     std::list<DwarfARangeSet> &ranges() const;
     std::list<DwarfPubnameUnit> &pubnames() const;
     std::map<Elf_Off, DwarfUnit> &units() const;
@@ -312,7 +314,7 @@ public:
     int version;
     std::unique_ptr<DwarfFrameInfo> debugFrame;
     std::unique_ptr<DwarfFrameInfo> ehFrame;
-    DwarfInfo(std::shared_ptr<ElfObject> object);
+    static DwarfInfo *load(std::shared_ptr<ElfObject> &obj); // use to construct.
     intmax_t decodeAddress(DWARFReader &, int encoding) const;
     std::vector<std::pair<const DwarfFileEntry *, int>> sourceFromAddr(uintmax_t addr);
     uintmax_t unwind(Process *proc, DwarfRegisters *regs, uintmax_t addr);

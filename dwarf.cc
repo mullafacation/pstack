@@ -167,15 +167,21 @@ DwarfPubnameUnit::DwarfPubnameUnit(DWARFReader &r)
     }
 }
 
-DwarfInfo::create(const shared_ptr<ElfObject> &obj)
+DwarfInfo *
+DwarfInfo::load(shared_ptr<ElfObject> &obj)
 {
     auto debstr = obj->getSection(".debug_str", SHT_PROGBITS);
-    if (debstr == 0) {
-    }
+    if (debstr != 0)
+        return new DwarfInfo(obj);
+
+    auto link = obj->getSection(".gnu_debuglink", SHT_PROGBITS);
+    if (link)
+        std::clog << "object " << obj->io->describe() << " has debug link" << std::endl;
+    return 0;
 }
 
 DwarfInfo::DwarfInfo(shared_ptr<ElfObject> obj)
-    : elf(obj)
+    : run(obj)
     , version(2)
     , info(obj->getSection(".debug_info", SHT_PROGBITS))
     , abbrev(obj->getSection(".debug_abbrev", SHT_PROGBITS))
@@ -188,7 +194,7 @@ DwarfInfo::DwarfInfo(shared_ptr<ElfObject> obj)
     // want these first: other sections refer into this.
     if (debstr) {
         debugStrings = new char[debstr->sh_size];
-        elf->io->readObj(debstr->sh_offset, debugStrings, debstr->sh_size);
+        run->io->readObj(debstr->sh_offset, debugStrings, debstr->sh_size);
     } else {
         debugStrings = 0;
         std::clog << "dwarf: no debug strings found in " << elf->io->describe() << std::endl;
@@ -1179,7 +1185,9 @@ dwarfUnwind(Process &p, DwarfRegisters *regs, Elf_Addr procaddr)
     DwarfRegisters newRegs;
     DwarfRegisterUnwind *unwind;
     std::pair<Elf_Addr, shared_ptr<ElfObject>> elf = p.findObject(procaddr);
-    shared_ptr<DwarfInfo> dwarf = p.getDwarf(elf.second);
+    auto &dwarf = p.getDwarf(elf.second);
+    if (!dwarf)
+        return 0;
     Elf_Off objaddr = procaddr - elf.first; // relocate process address to object address
 
     const DwarfFDE *fde = dwarf->debugFrame ? dwarf->debugFrame->findFDE(objaddr) : 0;
