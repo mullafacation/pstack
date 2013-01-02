@@ -110,6 +110,7 @@ struct DwarfPubnameUnit {
 struct DwarfBlock {
     off_t offset;
     off_t length;
+    Reader *io;
 };
 
 union DwarfValue {
@@ -295,15 +296,40 @@ struct DwarfFrameInfo {
     bool isCIE(Elf_Off id);
 };
 
+struct ElfSection {
+    std::shared_ptr<ElfObject> object;
+    const Elf_Shdr *hdr;
+    ElfSection()
+        : object(0)
+        , hdr(0)
+    { }
+    operator bool() { return object != 0; }
+    const Elf_Shdr *operator ->() { return hdr; }
+    ElfSection(const std::shared_ptr<ElfObject> &obj, const char *name, int type) {
+        hdr = obj->getSection(name, type);
+        if (hdr == 0) {
+            auto debug = obj->getDebug();
+            if (debug) {
+                object = debug;
+                hdr = debug->getSection(name, type);
+            }
+        } else {
+            object = obj;
+        }
+    }
+};
+
 class DwarfInfo {
     mutable std::list<DwarfPubnameUnit> pubnameUnits;
     mutable std::list<DwarfARangeSet> aranges;
     mutable std::map<Elf_Off, DwarfUnit> unitsm;
-    const mutable Elf_Shdr *info, *debstr, *pubnamesh, *arangesh, *debug_frame;
+    mutable ElfSection info, debstr, pubnamesh, arangesh, debug_frame;
+    Elf_Off base;
 public:
-    const Elf_Shdr *abbrev, *lineshdr;
+    mutable ElfSection abbrev, lineshdr;
     // interesting shdrs from the exe.
-    std::shared_ptr<ElfObject> elf;
+    std::shared_ptr<ElfObject> runElf;
+    std::shared_ptr<ElfObject> symElf;
     std::list<DwarfARangeSet> &ranges() const;
     std::list<DwarfPubnameUnit> &pubnames() const;
     std::map<Elf_Off, DwarfUnit> &units() const;
@@ -374,11 +400,20 @@ public:
     unsigned addrLen;
     int version;
     std::shared_ptr<ElfObject> elf;
-    
+
     DWARFReader(std::shared_ptr<Reader> io_, int version_, Elf_Off off_, Elf_Word size_)
         : off(off_)
         , end(off_ + size_)
         , io(io_)
+        , addrLen(ELF_BITS / 8)
+        , version(version_)
+    {
+    }
+
+    DWARFReader(ElfSection &section, int version_, Elf_Off off_ = 0)
+        : off(section->sh_offset + off_)
+        , end(section->sh_offset + section->sh_size)
+        , io(section.object->io)
         , addrLen(ELF_BITS / 8)
         , version(version_)
     {

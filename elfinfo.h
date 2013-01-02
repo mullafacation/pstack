@@ -122,7 +122,9 @@ private:
     void init(const std::shared_ptr<Reader> &); // want constructor chaining
     std::map<std::string, Elf_Shdr *> namedSection;
     std::string name;
+    std::shared_ptr<ElfObject> debug;
 public:
+    std::shared_ptr<ElfObject> getDebug();
     std::shared_ptr<Reader> io; // IO for the ELF image.
     Elf_Off getBase() const; // lowest address of a PT_LOAD segment.
     std::string getInterpreter() const;

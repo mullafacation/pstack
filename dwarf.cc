@@ -167,57 +167,50 @@ DwarfPubnameUnit::DwarfPubnameUnit(DWARFReader &r)
     }
 }
 
-DwarfInfo::create(const shared_ptr<ElfObject> &obj)
-{
-    auto debstr = obj->getSection(".debug_str", SHT_PROGBITS);
-    if (debstr == 0) {
-    }
-}
-
-DwarfInfo::DwarfInfo(shared_ptr<ElfObject> obj)
-    : elf(obj)
-    , version(2)
-    , info(obj->getSection(".debug_info", SHT_PROGBITS))
-    , abbrev(obj->getSection(".debug_abbrev", SHT_PROGBITS))
-    , debstr(obj->getSection(".debug_str", SHT_PROGBITS))
-    , lineshdr(obj->getSection(".debug_line", SHT_PROGBITS))
-    , debug_frame(obj->getSection(".debug_frame", SHT_PROGBITS))
-    , pubnamesh(obj->getSection(".debug_pubnames", SHT_PROGBITS))
-    , arangesh(obj->getSection(".debug_aranges", SHT_PROGBITS))
+DwarfInfo::DwarfInfo(shared_ptr<ElfObject> memobj)
+    : version(2)
+    , info(memobj, ".debug_info", SHT_PROGBITS)
+    , abbrev(memobj, ".debug_abbrev", SHT_PROGBITS)
+    , debstr(memobj, ".debug_str", SHT_PROGBITS)
+    , lineshdr(memobj, ".debug_line", SHT_PROGBITS)
+    , debug_frame(memobj, ".debug_frame", SHT_PROGBITS)
+    , pubnamesh(memobj, ".debug_pubnames", SHT_PROGBITS)
+    , arangesh(memobj, ".debug_aranges", SHT_PROGBITS)
+    , base(memobj->getBase())
 {
     // want these first: other sections refer into this.
     if (debstr) {
         debugStrings = new char[debstr->sh_size];
-        elf->io->readObj(debstr->sh_offset, debugStrings, debstr->sh_size);
+        debstr.object->io->readObj(debstr->sh_offset, debugStrings, debstr->sh_size);
     } else {
         debugStrings = 0;
-        std::clog << "dwarf: no debug strings found in " << elf->io->describe() << std::endl;
+        std::clog << "dwarf: no debug strings found in " << memobj->io->describe() << std::endl;
     }
 
-    auto eh_frame = obj->getSection(".eh_frame", SHT_PROGBITS);
+    ElfSection eh_frame(memobj, ".eh_frame", SHT_PROGBITS);
     if (eh_frame) {
-        DWARFReader reader(obj->io, version, eh_frame->sh_offset, eh_frame->sh_size);
+        DWARFReader reader(eh_frame, version);
         try {
             ehFrame = make_unique<DwarfFrameInfo>(this, reader, FI_EH_FRAME);
         }
         catch (const Exception &ex) {
             ehFrame = 0;
             std::clog << "can't decode .eh_frame for "
-                << obj->io->describe() << ": " << ex.what() << "\n";
+                << eh_frame.object->io->describe() << ": " << ex.what() << "\n";
         }
     } else {
         ehFrame = 0;
     }
 
     if (debug_frame) {
-        DWARFReader reader(obj->io, version, debug_frame->sh_offset, debug_frame->sh_size);
+        DWARFReader reader(debug_frame, version);
         try {
             debugFrame = make_unique<DwarfFrameInfo>(this, reader, FI_DEBUG_FRAME);
         }
         catch (const Exception &ex) {
             debugFrame = 0;
             std::clog << "can't decode .debug_frame for "
-                << obj->io->describe() << ": " << ex.what() << "\n";
+                << debug_frame.object->io->describe() << ": " << ex.what() << "\n";
         }
     } else {
         debugFrame = 0;
@@ -230,10 +223,10 @@ DwarfInfo::pubnames() const
 {
 
     if (pubnamesh) {
-        DWARFReader r(elf->io, version, pubnamesh->sh_offset, pubnamesh->sh_size);
+        DWARFReader r(pubnamesh, version);
         while (!r.empty())
             pubnameUnits.push_back(DwarfPubnameUnit(r));
-        pubnamesh = 0;
+        pubnamesh.object = 0;
     }
     return pubnameUnits;
 }
@@ -242,12 +235,12 @@ std::map<Elf_Off, DwarfUnit> &
 DwarfInfo::units() const
 {
     if (info) {
-        DWARFReader reader(elf->io, version, info->sh_offset, info->sh_size);
+        DWARFReader reader(info, version);
         while (!reader.empty()) {
             auto off = reader.getOffset() - info->sh_offset;
             unitsm[off] = DwarfUnit(this, reader);
         }
-        info = 0;
+        info.object = 0;
     }
     return unitsm;
 }
@@ -256,10 +249,10 @@ std::list<DwarfARangeSet> &
 DwarfInfo::ranges() const
 {
     if (arangesh) {
-        DWARFReader r(elf->io, version, arangesh->sh_offset, arangesh->sh_size);
+        DWARFReader r(arangesh, version);
         while (!r.empty())
             aranges.push_back(DwarfARangeSet(r));
-        arangesh = 0;
+        arangesh.object = 0;
     }
     return aranges;
 }
@@ -305,7 +298,7 @@ DwarfUnit::DwarfUnit(const DwarfInfo *di, DWARFReader &r)
     Elf_Off nextoff = r.getOffset() + length;
     version = r.version = r.getu16();
     off_t off = version >= 3 ? r.getuint(ELF_BITS/8) : r.getu32();
-    DWARFReader abbR(r.io, di->version, di->abbrev->sh_offset + off, di->abbrev->sh_size);
+    DWARFReader abbR(di->abbrev, di->version, off);
     r.addrLen = addrlen = r.getu8();
     uintmax_t code;
     while ((code = abbR.getuleb128()) != 0)
@@ -853,6 +846,7 @@ DwarfCIE::execInsns(DWARFReader &r, int version, uintmax_t addr, uintmax_t wantA
                 unwind.type = VAL_EXPRESSION;
                 unwind.u.expression.length = r.getuleb128();
                 unwind.u.expression.offset = r.getOffset();
+                unwind.u.expression.io = r.io.get();
                 r.skip(unwind.u.expression.length);
                 break;
             }
@@ -937,7 +931,7 @@ DwarfInfo::decodeAddress(DWARFReader &f, int encoding) const
     case 0:
         break;
     case DW_EH_PE_pcrel:
-        base += offset + elf->getBase();
+        base += offset + base;
         break;
     }
     return base;
@@ -1160,7 +1154,9 @@ DwarfInfo::getCFA(const Process &proc, const DwarfCallFrame *frame, const DwarfR
             return dwarfGetReg(regs, frame->cfaReg) + frame->cfaValue.u.offset;
         case EXPRESSION: {
             DwarfExpressionStack stack;
-            DWARFReader r(elf->io, version,
+            DWARFReader r(
+                    std::shared_ptr<Reader>(frame->cfaValue.u.expression.io),
+                    version,
                     frame->cfaValue.u.expression.offset,
                     frame->cfaValue.u.expression.length);
             dwarfEvalExpr(proc, r, regs, &stack);
