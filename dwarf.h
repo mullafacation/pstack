@@ -303,7 +303,7 @@ struct ElfSection {
         : object(0)
         , hdr(0)
     { }
-    operator bool() { return object != 0; }
+    operator bool() { return object != 0 && hdr != 0; }
     const Elf_Shdr *operator ->() { return hdr; }
     ElfSection(const std::shared_ptr<ElfObject> &obj, const char *name, int type) {
         hdr = obj->getSection(name, type);
@@ -324,12 +324,9 @@ class DwarfInfo {
     mutable std::list<DwarfARangeSet> aranges;
     mutable std::map<Elf_Off, DwarfUnit> unitsm;
     mutable ElfSection info, debstr, pubnamesh, arangesh, debug_frame;
-    Elf_Off base;
 public:
     mutable ElfSection abbrev, lineshdr;
     // interesting shdrs from the exe.
-    std::shared_ptr<ElfObject> runElf;
-    std::shared_ptr<ElfObject> symElf;
     std::list<DwarfARangeSet> &ranges() const;
     std::list<DwarfPubnameUnit> &pubnames() const;
     std::map<Elf_Off, DwarfUnit> &units() const;
@@ -338,11 +335,12 @@ public:
     int version;
     std::unique_ptr<DwarfFrameInfo> debugFrame;
     std::unique_ptr<DwarfFrameInfo> ehFrame;
-    DwarfInfo(std::shared_ptr<ElfObject> object);
+    static DwarfInfo *load(std::shared_ptr<ElfObject> &obj); // use to construct.
     intmax_t decodeAddress(DWARFReader &, int encoding) const;
     std::vector<std::pair<const DwarfFileEntry *, int>> sourceFromAddr(uintmax_t addr);
     uintmax_t unwind(Process *proc, DwarfRegisters *regs, uintmax_t addr);
     Elf_Addr getCFA(const Process &proc, const DwarfCallFrame *frame, const DwarfRegisters *regs);
+    DwarfInfo(std::shared_ptr<ElfObject> obj);
     ~DwarfInfo();
 };
 
@@ -411,9 +409,9 @@ public:
     }
 
     DWARFReader(ElfSection &section, int version_, Elf_Off off_ = 0)
-        : off(section->sh_offset + off_)
-        , end(section->sh_offset + section->sh_size)
-        , io(section.object->io)
+        : off(section ? section->sh_offset + off_ : 0)
+        , end(section ? section->sh_offset + section->sh_size : 0)
+        , io(section ? section.object->io : 0)
         , addrLen(ELF_BITS / 8)
         , version(version_)
     {

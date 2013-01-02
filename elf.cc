@@ -1,4 +1,6 @@
 #include <limits>
+#include <iostream>
+#include "util.h"
 #include "elfinfo.h"
 
 using std::string;
@@ -24,7 +26,7 @@ ElfObject::findHeaderForAddress(Elf_Off a) const
 ElfObject::ElfObject(string name_)
 {
     name = name_;
-    init(make_shared<FileReader>(linkResolve(name)));
+    init(make_shared<FileReader>(name));
 }
 
 ElfObject::ElfObject(shared_ptr<Reader> io_)
@@ -156,7 +158,11 @@ ElfObject::findSymbolByAddress(Elf_Addr addr, int type, Elf_Sym &sym, string &na
             }
         }
     }
-    return lowest != 0;
+    if (lowest == 0) {
+        return getDebug() ? debug->findSymbolByAddress(addr, type, sym, name) : false;
+    } else {
+        return true;
+    }
 }
 
 const Elf_Shdr *
@@ -275,6 +281,36 @@ elfImageNote(void *cookie, const char *name, u_int32_t type,
 
 ElfObject::~ElfObject()
 {
+}
+
+std::shared_ptr<ElfObject> ElfObject::getDebug()
+{
+    if (debug == 0) {
+        auto hdr = getSection(".gnu_debuglink", SHT_PROGBITS);
+        if (hdr == 0)
+            return 0;
+
+        std::vector<char> buf;
+        buf.resize(hdr->sh_size);
+        std::string link = io->readString(hdr->sh_offset);
+        std::ostringstream stream;
+        stream << io->describe();
+        std::string oldname = stream.str();
+        auto dir = dirname(oldname);
+        auto name = "/usr/lib/debug" + dir + "/" + link;
+
+        // XXX: verify checksum.
+        try {
+            debug = make_shared<ElfObject>(name);
+            std::clog << "opened " << name << " for debug version of " << oldname << std::endl;
+        }
+        catch (...) {
+            return 0;
+        }
+
+
+    }
+    return debug;
 }
 
 /*

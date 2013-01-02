@@ -176,7 +176,6 @@ DwarfInfo::DwarfInfo(shared_ptr<ElfObject> memobj)
     , debug_frame(memobj, ".debug_frame", SHT_PROGBITS)
     , pubnamesh(memobj, ".debug_pubnames", SHT_PROGBITS)
     , arangesh(memobj, ".debug_aranges", SHT_PROGBITS)
-    , base(memobj->getBase())
 {
     // want these first: other sections refer into this.
     if (debstr) {
@@ -1175,7 +1174,9 @@ dwarfUnwind(Process &p, DwarfRegisters *regs, Elf_Addr procaddr)
     DwarfRegisters newRegs;
     DwarfRegisterUnwind *unwind;
     std::pair<Elf_Addr, shared_ptr<ElfObject>> elf = p.findObject(procaddr);
-    shared_ptr<DwarfInfo> dwarf = p.getDwarf(elf.second);
+    auto &dwarf = p.getDwarf(elf.second);
+    if (!dwarf)
+        return 0;
     Elf_Off objaddr = procaddr - elf.first; // relocate process address to object address
 
     const DwarfFDE *fde = dwarf->debugFrame ? dwarf->debugFrame->findFDE(objaddr) : 0;

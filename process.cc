@@ -129,13 +129,15 @@ Process::load()
 
 }
 
-std::shared_ptr<DwarfInfo>
+std::unique_ptr<DwarfInfo> &
 Process::getDwarf(std::shared_ptr<ElfObject> elf)
 {
-    std::shared_ptr<DwarfInfo> &dwarf = this->dwarf[elf];
-    if (dwarf == 0)
-        dwarf.reset(new DwarfInfo(elf));
-    return dwarf;
+    const auto &info = this->dwarf.find(elf);
+    if (info != this->dwarf.end())
+        return info->second;
+    auto newinfo = new DwarfInfo(elf);
+    dwarf[elf].reset(newinfo);
+    return dwarf[elf];
 }
 
 void
@@ -228,7 +230,7 @@ Process::dumpStackJSON(std::ostream &os, const ThreadStack &thread)
         if (obj != 0) {
             os << ", \"off\": " << intptr_t(objIp) - sym.st_value;
             os << ", \"file\": " << "\"" << fileName << "\"";
-            auto di = getDwarf(obj);
+            auto &di = getDwarf(obj);
             if (di)
                 for (auto &ent : di->sourceFromAddr(objIp - 1))
                     os
@@ -275,7 +277,7 @@ Process::dumpStackText(std::ostream &os, const ThreadStack &thread)
 
         if (obj != 0) {
             os << " in " << fileName;
-            auto di = getDwarf(obj);
+            auto &di = getDwarf(obj);
             if (di) {
                 for (auto &ent : di->sourceFromAddr(objIp - 1)) {
                     os << " at ";
@@ -292,7 +294,8 @@ Process::dumpStackText(std::ostream &os, const ThreadStack &thread)
 #ifdef i386
                 << ", bp=0x" << std::hex << intptr_t(frame->bp)
 #endif
-                << ", off=0x" << intptr_t(objIp) - sym.st_value;
+                << ", symval=0x" << std::hex << sym.st_value
+                << ", off=0x" << std::hex << intptr_t(objIp) - sym.st_value;
             if (frame->unwindBy != "END")
                 os << ", unwind by: " << frame->unwindBy;
             os << ")";
