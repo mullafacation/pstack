@@ -13,14 +13,13 @@
 class Process;
 
 enum DwarfHasChildren { DW_CHILDREN_yes = 1, DW_CHILDREN_no = 0 };
-struct DwarfCIE;
-struct DwarfInfo;
-class DWARFReader;
-class DwarfLineInfo;
-struct DwarfUnit;
-struct DwarfFrameInfo;
-struct DwarfEntry;
-typedef std::map<off_t, std::shared_ptr<DwarfEntry>> DwarfEntries;
+template <typename Elf> struct DwarfCIE;
+template <typename Elf> struct DwarfInfo;
+template <typename Elf> class DWARFReader;
+template <typename Elf> class DwarfLineInfo;
+template <typename Elf> struct DwarfUnit;
+template <typename Elf> struct DwarfFrameInfo;
+template <typename Elf> struct DwarfEntry;
 
 typedef struct {
     uintmax_t reg[DWARF_MAXREG];
@@ -67,19 +66,21 @@ struct DwarfAttributeSpec {
     DwarfAttributeSpec(DwarfAttrName name_, DwarfForm form_) : name(name_), form(form_) { }
 };
 
+template <typename Elf>
 struct DwarfAbbreviation {
     intmax_t code;
     DwarfTag tag;
     enum DwarfHasChildren hasChildren;
     std::list<DwarfAttributeSpec> specs;
-    DwarfAbbreviation(DWARFReader &, intmax_t code);
+    DwarfAbbreviation(DWARFReader<Elf> &, intmax_t code);
     DwarfAbbreviation() {}
 };
 
+template <typename Elf>
 struct DwarfPubname {
     uint32_t offset;
     std::string name;
-    DwarfPubname(DWARFReader &r, uint32_t offset);
+    DwarfPubname(DWARFReader<Elf> &r, uint32_t offset);
 };
 
 struct DwarfARange {
@@ -88,6 +89,7 @@ struct DwarfARange {
     DwarfARange(uintmax_t start_, uintmax_t length_) : start(start_), length(length_) {}
 };
 
+template <typename Elf>
 struct DwarfARangeSet {
     uint32_t length;
     uint16_t version;
@@ -95,16 +97,17 @@ struct DwarfARangeSet {
     uint8_t addrlen;
     uint8_t segdesclen;
     std::vector<DwarfARange> ranges;
-    DwarfARangeSet(DWARFReader &r);
+    DwarfARangeSet(DWARFReader<Elf> &r);
 };
 
+template <typename Elf>
 struct DwarfPubnameUnit {
     uint16_t length;
     uint16_t version;
     uint32_t infoOffset;
     uint32_t infoLength;
-    std::list<DwarfPubname> pubnames;
-    DwarfPubnameUnit(DWARFReader &r);
+    std::list<DwarfPubname<Elf>> pubnames;
+    DwarfPubnameUnit(DWARFReader<Elf> &r);
 };
 
 struct DwarfBlock {
@@ -122,11 +125,12 @@ union DwarfValue {
     char flag;
 };
 
+template <typename Elf>
 struct DwarfAttribute {
     const DwarfAttributeSpec *spec; /* From abbrev table attached to type */
-    const DwarfEntry *entry;
+    const DwarfEntry<Elf> *entry;
     DwarfValue value;
-    DwarfAttribute(DWARFReader &, const DwarfEntry *, const DwarfAttributeSpec *spec);
+    DwarfAttribute(DWARFReader<Elf> &, const DwarfEntry<Elf> *, const DwarfAttributeSpec *spec);
     ~DwarfAttribute() {
         if (spec && spec->form == DW_FORM_string)
             free((void *)(const void *)value.string);
@@ -149,26 +153,28 @@ struct DwarfAttribute {
             value.udata = rhs.value.udata;
         return *this;
     }
-    const DwarfEntry *getRef() const;
+    const DwarfEntry<Elf> *getRef() const;
 };
 
+template <typename Elf>
 struct DwarfEntry {
-    DwarfEntries children;
-    const DwarfUnit *unit;
-    const DwarfAbbreviation *type;
+    typedef std::map<off_t, std::shared_ptr<DwarfEntry<Elf>>> ByAddr;
+    ByAddr children;
+    const DwarfUnit<Elf> *unit;
+    const DwarfAbbreviation<Elf> *type;
     intmax_t offset;
-    std::map<DwarfAttrName, DwarfAttribute> attributes;
+    std::map<DwarfAttrName, DwarfAttribute<Elf>> attributes;
 
     DwarfEntry();
 
-    const DwarfAttribute &attrForName(DwarfAttrName name) const {
+    const DwarfAttribute<Elf> &attrForName(DwarfAttrName name) const {
         auto attr = attributes.find(name);
         if (attr != attributes.end())
             return attr->second;
         throw "no such attribute";
     }
 
-    DwarfEntry(DWARFReader &r, intmax_t, DwarfUnit *unit, intmax_t offset);
+    DwarfEntry(DWARFReader<Elf> &r, intmax_t, DwarfUnit<Elf> *unit, intmax_t offset);
     const char *name() {
         try {
             return attrForName(DW_AT_name).value.string;
@@ -184,65 +190,70 @@ enum FIType {
     FI_EH_FRAME
 };
 
+template <typename Elf>
 struct DwarfFileEntry {
     std::string name;
     std::string directory;
     unsigned lastMod;
     unsigned length;
     DwarfFileEntry(const std::string &name_, std::string dir_, unsigned lastMod_, unsigned length_);
-    DwarfFileEntry(DWARFReader &r, DwarfLineInfo *info);
+    DwarfFileEntry(DWARFReader<Elf> &r, DwarfLineInfo<Elf> *info);
     DwarfFileEntry() {}
 };
 
+template <typename Elf>
 struct DwarfLineState {
     uintmax_t addr;
-    const DwarfFileEntry *file;
+    const DwarfFileEntry<Elf> *file;
     unsigned line;
     unsigned column;
     unsigned is_stmt:1;
     unsigned basic_block:1;
     unsigned end_sequence:1;
-    DwarfLineState(DwarfLineInfo *);
-    void reset(DwarfLineInfo *);
+    DwarfLineState(DwarfLineInfo<Elf> *);
+    void reset(DwarfLineInfo<Elf> *);
 };
 
+template <typename Elf>
 struct DwarfLineInfo {
     int default_is_stmt;
     uint8_t opcode_base;
     std::vector<int> opcode_lengths;
     std::vector<std::string> directories;
-    std::vector<DwarfFileEntry> files;
-    std::vector<DwarfLineState> matrix;
+    std::vector<DwarfFileEntry<Elf>> files;
+    std::vector<DwarfLineState<Elf>> matrix;
     DwarfLineInfo() {}
-    void build(DWARFReader &, const DwarfUnit *);
+    void build(DWARFReader<Elf> &, const DwarfUnit<Elf> *);
 };
 
+template <typename Elf>
 struct DwarfUnit {
-    const DwarfInfo *dwarf;
+    const DwarfInfo<Elf> *dwarf;
     off_t offset;
-    void decodeEntries(DWARFReader &r, DwarfEntries &entries);
+    void decodeEntries(DWARFReader<Elf> &r, typename DwarfEntry<Elf>::ByAddr &entries);
     uint32_t length;
     uint16_t version;
-    std::map<DwarfTag, DwarfAbbreviation> abbreviations;
+    std::map<DwarfTag, DwarfAbbreviation<Elf>> abbreviations;
     uint8_t addrlen;
     const unsigned char *entryPtr;
     const unsigned char *lineInfo;
-    DwarfEntries entries;
-    DwarfEntries allEntries;
-    DwarfLineInfo lines;
-    DwarfUnit(const DwarfInfo *, DWARFReader &);
+    typename DwarfEntry<Elf>::ByAddr entries;
+    typename DwarfEntry<Elf>::ByAddr allEntries;
+    DwarfLineInfo<Elf> lines;
+    DwarfUnit(const DwarfInfo<Elf> *, DWARFReader<Elf> &);
     std::string name() const;
     DwarfUnit() : dwarf(0), offset(-1) {}
 };
 
+template <typename Elf>
 struct DwarfFDE {
-    DwarfCIE *cie;
+    DwarfCIE<Elf> *cie;
     uintmax_t iloc;
     uintmax_t irange;
-    Elf_Off instructions;
-    Elf_Off end;
+    uintmax_t instructions;
+    uintmax_t end;
     std::vector<unsigned char> aug;
-    DwarfFDE(DwarfInfo *, DWARFReader &, DwarfCIE * , Elf_Off end);
+    DwarfFDE(DwarfInfo<Elf> *, DWARFReader<Elf> &, DwarfCIE<Elf> * , uintmax_t end);
 };
 
 #define MAXREG 128
@@ -276,8 +287,9 @@ struct DwarfCallFrame {
     // default copy constructor is valid.
 };
 
+template <typename Elf>
 struct DwarfCIE {
-    const DwarfInfo *info;
+    const DwarfInfo<Elf> *info;
     uint8_t version;
     uint8_t addressEncoding;
     unsigned char lsdaEncoding;
@@ -285,62 +297,63 @@ struct DwarfCIE {
     unsigned codeAlign;
     int dataAlign;
     int rar;
-    Elf_Off instructions;
-    Elf_Off end;
+    uintmax_t instructions;
+    uintmax_t end;
     uintmax_t personality;
     unsigned long augSize;
     std::string augmentation;
-    DwarfCIE(const DwarfInfo *, DWARFReader &, Elf_Off);
+    DwarfCIE(const DwarfInfo<Elf> *, DWARFReader<Elf> &, uintmax_t);
     DwarfCIE() {}
-    DwarfCallFrame execInsns(DWARFReader &r, int version, uintmax_t addr, uintmax_t wantAddr);
+    DwarfCallFrame execInsns(DWARFReader<Elf> &r, int version, uintmax_t addr, uintmax_t wantAddr);
 };
 
+template <typename Elf>
 struct DwarfFrameInfo {
-    const DwarfInfo *dwarf;
+    const DwarfInfo<Elf> *dwarf;
     FIType type;
-    std::map<Elf_Addr, DwarfCIE> cies;
-    std::list<DwarfFDE> fdeList;
-    DwarfFrameInfo(DwarfInfo *, DWARFReader &, FIType type);
-    Elf_Addr decodeCIEFDEHdr(int version, DWARFReader &, Elf_Addr &id, enum FIType, DwarfCIE **);
-    const DwarfFDE *findFDE(Elf_Addr) const;
-    bool isCIE(Elf_Off id);
+    std::map<uintmax_t, DwarfCIE<Elf>> cies;
+    std::list<DwarfFDE<Elf>> fdeList;
+    DwarfFrameInfo(DwarfInfo<Elf> *, DWARFReader<Elf> &, FIType type);
+    uintmax_t decodeCIEFDEHdr(int version, DWARFReader<Elf> &, uintmax_t &id, enum FIType, DwarfCIE<Elf> **);
+    const DwarfFDE<Elf> *findFDE(uintmax_t) const;
+    bool isCIE(uintmax_t id);
 };
 
+template <typename Elf>
 class DwarfInfo {
-    mutable std::list<DwarfPubnameUnit> pubnameUnits;
-    mutable std::list<DwarfARangeSet> aranges;
-    mutable std::map<Elf_Off, std::shared_ptr<DwarfUnit>> unitsm;
-    mutable ElfSection info, debstr, pubnamesh, arangesh, debug_frame;
+    mutable std::list<DwarfPubnameUnit<Elf>> pubnameUnits;
+    mutable std::list<DwarfARangeSet<Elf>> aranges;
+    mutable std::map<uintmax_t, std::shared_ptr<DwarfUnit<Elf>>> unitsm;
+    mutable ElfSection<Elf> info, debstr, pubnamesh, arangesh, debug_frame;
 public:
-    std::map<Elf_Addr, DwarfCallFrame> callFrameForAddr;
-    const ElfSection abbrev, lineshdr;
+    std::map<uintmax_t, DwarfCallFrame> callFrameForAddr;
+    const ElfSection<Elf> abbrev, lineshdr;
     // interesting shdrs from the exe.
-    std::shared_ptr<ElfObject> elf;
-    std::list<DwarfARangeSet> &ranges() const;
-    std::list<DwarfPubnameUnit> &pubnames() const;
-    std::map<Elf_Off, std::shared_ptr<DwarfUnit>> &units() const;
+    std::shared_ptr<ElfObject<Elf>> elf;
+    std::list<DwarfARangeSet<Elf>> &ranges() const;
+    std::list<DwarfPubnameUnit<Elf>> &pubnames() const;
+    std::map<uintmax_t, std::shared_ptr<DwarfUnit<Elf>>> &units() const;
     char *debugStrings;
     off_t lines;
     int version;
-    std::unique_ptr<DwarfFrameInfo> debugFrame;
-    std::unique_ptr<DwarfFrameInfo> ehFrame;
-    DwarfInfo(std::shared_ptr<ElfObject> object);
-    intmax_t decodeAddress(DWARFReader &, int encoding) const;
-    std::vector<std::pair<const DwarfFileEntry *, int>> sourceFromAddr(uintmax_t addr);
+    std::unique_ptr<DwarfFrameInfo<Elf>> debugFrame;
+    std::unique_ptr<DwarfFrameInfo<Elf>> ehFrame;
+    DwarfInfo(std::shared_ptr<ElfObject<Elf>> object);
+    intmax_t decodeAddress(DWARFReader<Elf> &, int encoding) const;
+
+    std::vector<std::pair<const DwarfFileEntry<Elf> *, int>> sourceFromAddr(uintmax_t addr);
+
     uintmax_t unwind(Process *proc, DwarfRegisters *regs, uintmax_t addr);
-    Elf_Addr getCFA(const Process &proc, const DwarfCallFrame *frame, const DwarfRegisters *regs);
+    uintmax_t getCFA(const Process &proc, const DwarfCallFrame *frame, const DwarfRegisters *regs);
     ~DwarfInfo();
 };
 
-void dwarfDump(FILE *out, int, const DwarfInfo *info);
-DwarfInfo *dwarfLoad(Process *, struct ElfObject *obj, FILE *errs);
-const DwarfAbbreviation *dwarfUnitGetAbbrev(const DwarfUnit *unit, intmax_t code);
-void dwarfDumpSpec(FILE *out, int indent, const DwarfAttributeSpec *spec);
-void dwarfDumpAbbrev(FILE *out, int indent, const DwarfAbbreviation *abbrev);
-void dwarfDumpUnit(FILE *, int indent, const DwarfInfo *, const DwarfUnit *);
 const char *dwarfSOpcodeName(enum DwarfLineSOpcode code);
 const char *dwarfEOpcodeName(enum DwarfLineEOpcode code);
-int dwarfComputeCFA(Process *, const DwarfInfo *, DwarfFDE *, DwarfCallFrame *, DwarfRegisters *, uintmax_t addr);
+
+template <typename Elf>
+int dwarfComputeCFA(Process *, const DwarfInfo<Elf> *, DwarfFDE<Elf> *, DwarfCallFrame *, DwarfRegisters *, uintmax_t addr);
+
 void dwarfArchGetRegs(const gregset_t *regs, uintmax_t *dwarfRegs);
 uintmax_t dwarfGetReg(const DwarfRegisters *regs, int regno);
 void dwarfSetReg(DwarfRegisters *regs, int regno, uintmax_t regval);
@@ -394,18 +407,19 @@ enum DwarfCFAInstruction {
     DW_CFA_PAD                  = 0xff
 };
 
+template <class Elf>
 class DWARFReader {
-    Elf_Off off;
-    Elf_Off end;
+    uintmax_t off;
+    uintmax_t end;
     uintmax_t getuleb128shift(int *shift, bool &isSigned);
 public:
     std::shared_ptr<Reader> io;
     unsigned addrLen;
     int version;
     size_t dwarfLen; // 8 => 64-bit. 4 => 32-bit.
-    std::shared_ptr<ElfObject> elf;
+    std::shared_ptr<ElfObject<Elf>> elf;
 
-    DWARFReader(std::shared_ptr<Reader> io_, int version_, Elf_Off off_, Elf_Word size_, size_t dwarfLen_)
+    DWARFReader(std::shared_ptr<Reader> io_, int version_, uintmax_t off_, uintmax_t size_, size_t dwarfLen_)
         : off(off_)
         , end(off_ + size_)
         , io(io_)
@@ -415,7 +429,7 @@ public:
     {
     }
 
-    DWARFReader(DWARFReader &rhs, Elf_Off off_, Elf_Word size_)
+    DWARFReader(DWARFReader &rhs, uintmax_t off_, uintmax_t size_)
         : off(off_)
         , end(off_ + size_)
         , io(rhs.io)
@@ -426,7 +440,7 @@ public:
     }
 
 
-    DWARFReader(const ElfSection &section, int version_, Elf_Off off_, size_t dwarfLen_)
+    DWARFReader(const ElfSection<Elf> &section, int version_, uintmax_t off_, size_t dwarfLen_)
         : off(off_ + section->sh_offset)
         , end(section->sh_offset + section->sh_size)
         , io(section.obj.io)
@@ -447,12 +461,12 @@ public:
     uintmax_t getuleb128();
     intmax_t getsleb128();
     std::string getstring();
-    Elf_Off getOffset() { return off; }
-    Elf_Off getLimit() { return end; }
-    void setOffset(Elf_Off off_) { off = off_; }
+    uintmax_t getOffset() { return off; }
+    uintmax_t getLimit() { return end; }
+    void setOffset(uintmax_t off_) { off = off_; }
     bool empty() { return off == end; }
-    Elf_Off getlength(size_t *);
-    void skip(Elf_Off amount) { off += amount; }
+    uintmax_t getlength(size_t *);
+    void skip(uintmax_t amount) { off += amount; }
 };
 
 
@@ -480,5 +494,5 @@ enum DwarfExpressionOp {
 #define DW_EH_PE_datarel        0x30
 #define DW_EH_PE_funcrel        0x40
 #define DW_EH_PE_aligned        0x50
-bool dwarfUnwind(Process &, DwarfRegisters *, Elf_Addr &pc /*in/out */);
+bool dwarfUnwind(Process &, DwarfRegisters *, uintmax_t &pc /*in/out */);
 #endif

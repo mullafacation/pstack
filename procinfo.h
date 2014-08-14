@@ -11,7 +11,7 @@ struct ps_prochandle {};
 class Process;
 
 struct StackFrame {
-    Elf_Addr ip;
+    uintmax_t ip;
     std::vector<Elf_Word> args;
     const char *unwindBy;
     StackFrame(Elf_Addr ip_) : ip(ip_), unwindBy("ERROR") {}
