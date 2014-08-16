@@ -8,18 +8,20 @@
 
 struct ps_prochandle {};
 
-class Process;
+template <typename Elf> class Process;
 
+template <typename Elf>
 struct StackFrame {
-    uintmax_t ip;
-    std::vector<Elf_Word> args;
+    typename Elf::Addr ip;
+    std::vector<typename Elf::Word> args;
     const char *unwindBy;
-    StackFrame(Elf_Addr ip_) : ip(ip_), unwindBy("ERROR") {}
+    StackFrame(typename Elf::Addr ip_) : ip(ip_), unwindBy("ERROR") {}
 };
 
+template <typename Elf>
 struct ThreadStack {
     td_thrinfo_t info;
-    std::vector<StackFrame *> stack;
+    std::vector<StackFrame<Elf> *> stack;
     ThreadStack() {}
     ~ThreadStack() {
         for (auto i = stack.begin(); i != stack.end(); ++i)
@@ -42,13 +44,15 @@ public:
 };
 
 typedef std::vector<std::pair<std::string, std::string>> PathReplacementList;
+
+template <class Elf>
 class Process : public ps_prochandle {
-    Elf_Addr findRDebugAddr();
-    Elf_Off entry; // entrypoint of process.
+    typename Elf::Addr findRDebugAddr();
+    typename Elf::Off entry; // entrypoint of process.
     void loadSharedObjects(Elf_Addr);
     char *vdso;
     bool isStatic;
-    Elf_Addr sysent; // for AT_SYSINFO
+    typename Elf::Addr sysent; // for AT_SYSINFO
     std::map<std::shared_ptr<ElfObject>, DwarfInfo *> dwarf;
 
 protected:
