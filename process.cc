@@ -8,6 +8,9 @@
 #include <link.h>
 #include <unistd.h>
 #include <libpstack/ps_callback.h>
+#define REGMAP(a,b)
+#include <libpstack/dwarf/archreg.h>
+
 #include <libpstack/proc.h>
 #include <libpstack/dwarf.h>
 #include <libpstack/dump.h>
@@ -27,7 +30,9 @@ typedef struct regs ptrace_regs;
 
 #ifdef __linux__
 typedef struct user_regs_struct  elf_regs;
-#if defined(__PPC)
+#if defined(__ARM_ARCH)
+#define REG(regs, reg) ((regs).regs[reg])
+#elif defined(__PPC)
 #define REG(regs, reg) ((regs).n##reg)
 #elif defined(__i386__)
 #define REG(regs, reg) ((regs).e##reg)
@@ -597,7 +602,7 @@ ThreadStack::unwind(Process &p, CoreRegisters &regs)
         auto prevFrame = new StackFrame();
 
         // Set up the first frame using the machine context registers
-        prevFrame->ip = REG(regs, ip);
+        prevFrame->ip = REG(regs, IPREG);
         prevFrame->setCoreRegs(regs);
 
         StackFrame *frame;
