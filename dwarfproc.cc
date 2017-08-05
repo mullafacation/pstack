@@ -87,7 +87,7 @@ DwarfExpressionStack::eval(const Process &proc, const DwarfAttribute *attr, cons
         }
         case DW_FORM_exprloc: {
             auto &block = attr->value.block;
-            DWARFReader r(dwarf->elf->io, block.offset, block.length, 0);
+            DWARFReader r(dwarf->info.io, block.offset, block.length, 0);
             return eval(proc, r, frame);
         }
         default:
@@ -297,7 +297,7 @@ StackFrame::getCFA(const Process &proc, const DwarfCallFrame &dcf) const
             return getReg(dcf.cfaReg) + dcf.cfaValue.u.offset;
         case EXPRESSION: {
             DwarfExpressionStack stack;
-            DWARFReader r(dwarf->elf->io, dcf.cfaValue.u.expression.offset, dcf.cfaValue.u.expression.length, 0);
+            DWARFReader r(dwarf->info.io, dcf.cfaValue.u.expression.offset, dcf.cfaValue.u.expression.length, 0);
             return stack.eval(proc, r, this);
         }
     }
@@ -332,7 +332,7 @@ StackFrame::unwind(Process &p)
     if (!fde)
        return 0;
 
-    DWARFReader r(dwarf->elf->io, fde->instructions, fde->end - fde->instructions, 0);
+    DWARFReader r(dwarf->info.io, fde->instructions, fde->end - fde->instructions, 0);
 
     auto iter = dwarf->callFrameForAddr.find(objaddr);
     if (iter == dwarf->callFrameForAddr.end()) {
@@ -373,7 +373,7 @@ StackFrame::unwind(Process &p)
             case EXPRESSION: {
                 DwarfExpressionStack stack;
                 stack.push(cfa);
-                DWARFReader reader(elf->io, unwind.u.expression.offset, unwind.u.expression.length, 0);
+                DWARFReader reader(dwarf->info.io, unwind.u.expression.offset, unwind.u.expression.length, 0);
                 auto val = stack.eval(p, reader, this);
                 // EXPRESSIONs give an address, VAL_EXPRESSION gives a literal.
                 if (unwind.type == EXPRESSION)

@@ -179,7 +179,7 @@ DwarfInfo::DwarfInfo(std::shared_ptr<ElfObject> obj)
     // want these first: other sections refer into this.
     if (debstr) {
         debugStrings = new char[debstr->sh_size];
-        debstr.obj.io->readObj(debstr->sh_offset, debugStrings, debstr->sh_size);
+        debstr.io->readObj(0, debugStrings, debstr->sh_size);
     } else {
         debugStrings = 0;
     }
@@ -192,7 +192,7 @@ DwarfInfo::DwarfInfo(std::shared_ptr<ElfObject> obj)
         catch (const Exception &ex) {
             ehFrame = 0;
             std::clog << "can't decode .eh_frame for "
-                << obj->io->describe() << ": " << ex.what() << "\n";
+                << obj->getio()->describe() << ": " << ex.what() << "\n";
         }
     } else {
         ehFrame = 0;
@@ -206,7 +206,7 @@ DwarfInfo::DwarfInfo(std::shared_ptr<ElfObject> obj)
         catch (const Exception &ex) {
             debugFrame = 0;
             std::clog << "can't decode .debug_frame for "
-                << obj->io->describe() << ": " << ex.what() << "\n";
+                << obj->getio()->describe() << ": " << ex.what() << "\n";
         }
     } else {
         debugFrame = 0;
@@ -740,12 +740,12 @@ DwarfInfo::getAltImage()
         char name[1024];
         assert(shdr->sh_size < sizeof name);
         name[shdr->sh_size] = 0;
-        elf->io->read(shdr->sh_offset, shdr->sh_size, name);
+        shdr.io->read(0, shdr->sh_size, name);
         char *path;
         if (name[0] != '/') {
             // Not relative - prefix it with dirname of the image
             std::ostringstream os;
-            os << elf->io->describe();
+            os << elf->getio()->describe();
             char absbuf[1024];
             strncpy(absbuf, os.str().c_str(), sizeof absbuf);
             dirname(absbuf);
@@ -757,7 +757,7 @@ DwarfInfo::getAltImage()
             path = name;
         }
         if (verbose)
-           *debug << "io: " << elf->io->describe() << ", alt path: " << name << "\n";
+           *debug << "io: " << elf->getio()->describe() << ", alt path: " << name << "\n";
         altImage = std::make_shared<ElfObject>(path);
     }
     return altImage;
