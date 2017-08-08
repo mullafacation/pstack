@@ -110,12 +110,6 @@ enum NoteIter {
     NOTE_DONE
 };
 
-template<typename T, typename... Args>
-std::unique_ptr<T> make_unique(Args&&... args)
-{
-    return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
-}
-
 struct ElfSection {
     const Elf_Shdr *shdr;
     std::shared_ptr<Reader> io;

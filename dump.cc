@@ -237,7 +237,7 @@ operator << (std::ostream &os, const DwarfAttribute &attr)
 }
 
 std::ostream &
-operator <<(std::ostream &os, const std::pair<const DwarfInfo *, const DwarfCIE *> &dcie)
+operator <<(std::ostream &os, const std::pair<const DwarfFrameInfo &, const DwarfCIE *> &dcie)
 {
     os
         << "{ \"version\": " << int(dcie.second->version)
@@ -248,14 +248,14 @@ operator <<(std::ostream &os, const std::pair<const DwarfInfo *, const DwarfCIE 
         << ", \"instrlen\": " << dcie.second->end - dcie.second->instructions
         << ", \"instructions\": ";
     ;
-    DWARFReader r(dcie.first->info.io, dcie.second->instructions,
+    DWARFReader r(dcie.first.io, dcie.second->instructions,
             dcie.second->end - dcie.second->instructions, ELF_BITS / 8);
     dwarfDumpCFAInsns(os, r);
     return os << " }";
 }
 
 std::ostream &
-operator << (std::ostream &os, const std::pair<const DwarfInfo *, const DwarfFDE *> &dfde )
+operator << (std::ostream &os, const std::pair<const DwarfFrameInfo &, const DwarfFDE *> &dfde )
 {
     os
         << "{ \"cie\": " << intptr_t(dfde.second->cie)
@@ -264,7 +264,7 @@ operator << (std::ostream &os, const std::pair<const DwarfInfo *, const DwarfFDE
         << ", \"augmentation\": \"" << dfde.second->augmentation << "\""
         << ", \"instructions\": "
     ; 
-    DWARFReader r(dfde.first->info.io, dfde.second->instructions, dfde.second->end - dfde.second->instructions, ELF_BITS/8);
+    DWARFReader r(dfde.first.io, dfde.second->instructions, dfde.second->end - dfde.second->instructions, ELF_BITS/8);
     dwarfDumpCFAInsns(os, r);
     return os << "}";
 }
@@ -277,15 +277,14 @@ operator << (std::ostream &os, const DwarfFrameInfo &info)
     const char *sep = "";
     for (auto cieent = info.cies.begin(); cieent != info.cies.end(); ++cieent) {
         const DwarfCIE &cie  = cieent->second;
-        os << sep << std::make_pair(info.dwarf, &cie);
+        os << sep << std::make_pair(info, &cie);
         sep = ",\n";
     }
     os << "], \"fdelist\": [";
 
     sep = "";
     for (auto fde = info.fdeList.begin(); fde != info.fdeList.end(); ++ fde) {
-        const std::pair<const DwarfInfo *, const DwarfFDE *> p = std::make_pair(info.dwarf, &(*fde));
-        os << sep << p;
+        os << sep << std::make_pair(info, &(*fde));
         sep = ",\n";
     }
     return os << " ] }";

@@ -185,9 +185,8 @@ DwarfInfo::DwarfInfo(std::shared_ptr<ElfObject> obj)
     }
     auto eh_frame = obj->getSection(".eh_frame", SHT_PROGBITS);
     if (eh_frame) {
-        DWARFReader reader(eh_frame, 0, 0);
         try {
-            ehFrame = std::unique_ptr<DwarfFrameInfo>(new DwarfFrameInfo(this, reader, FI_EH_FRAME));
+            ehFrame = make_unique<DwarfFrameInfo>(this, eh_frame.io, FI_EH_FRAME);
         }
         catch (const Exception &ex) {
             ehFrame = 0;
@@ -201,7 +200,7 @@ DwarfInfo::DwarfInfo(std::shared_ptr<ElfObject> obj)
     if (debug_frame && ! noDebugLibs) {
         DWARFReader reader(debug_frame, 0, 0);
         try {
-            debugFrame = std::unique_ptr<DwarfFrameInfo>(new DwarfFrameInfo(this, reader, FI_DEBUG_FRAME));
+            debugFrame = make_unique<DwarfFrameInfo>(this, debug_frame.io, FI_DEBUG_FRAME);
         }
         catch (const Exception &ex) {
             debugFrame = 0;
@@ -248,7 +247,7 @@ DwarfInfo::getUnits()
     DWARFReader r(info, 0, 0);
 
     while (!r.empty()) {
-       auto off = r.getOffset() - info->sh_offset;
+       auto off = r.getOffset();
        if (unitsm.find(off) != unitsm.end()) {
           auto length = r.getlength(&r.dwarfLen);
           r.setOffset(r.getOffset() + length);
@@ -855,11 +854,13 @@ DwarfFrameInfo::isCIE(Elf_Addr cieid)
     return (type == FI_DEBUG_FRAME && cieid == 0xffffffff) || (type == FI_EH_FRAME && cieid == 0);
 }
 
-DwarfFrameInfo::DwarfFrameInfo(DwarfInfo *info, DWARFReader &reader, enum FIType type_)
+DwarfFrameInfo::DwarfFrameInfo(DwarfInfo *info, std::shared_ptr<Reader> &io_, enum FIType type_)
     : dwarf(info)
+    , io(io_)
     , type(type_)
 {
     Elf_Addr cieid;
+    DWARFReader reader(io, 0, 0, 0);
 
     // decode in 2 passes: first for CIE, then for FDE
     off_t start = reader.getOffset();
@@ -1195,7 +1196,7 @@ DwarfEntry::referencedEntry(DwarfAttrName name) const
     off_t off;
     switch (attr->spec->form) {
         case DW_FORM_ref_addr:
-            off = attr->value.ref + unit->dwarf->info.shdr->sh_offset;
+            off = attr->value.ref;
             break;
         case DW_FORM_ref_udata:
         case DW_FORM_ref2:

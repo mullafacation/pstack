@@ -87,7 +87,7 @@ DwarfExpressionStack::eval(const Process &proc, const DwarfAttribute *attr, cons
         }
         case DW_FORM_exprloc: {
             auto &block = attr->value.block;
-            DWARFReader r(dwarf->info.io, block.offset, block.length, 0);
+            DWARFReader r(frame->frameInfo->io, block.offset, block.length, 0);
             return eval(proc, r, frame);
         }
         default:
@@ -297,7 +297,7 @@ StackFrame::getCFA(const Process &proc, const DwarfCallFrame &dcf) const
             return getReg(dcf.cfaReg) + dcf.cfaValue.u.offset;
         case EXPRESSION: {
             DwarfExpressionStack stack;
-            DWARFReader r(dwarf->info.io, dcf.cfaValue.u.expression.offset, dcf.cfaValue.u.expression.length, 0);
+            DWARFReader r(frameInfo->io, dcf.cfaValue.u.expression.offset, dcf.cfaValue.u.expression.length, 0);
             return stack.eval(proc, r, this);
         }
     }
@@ -318,11 +318,13 @@ StackFrame::unwind(Process &p)
        dwarf = p.getDwarf(elf, debug);
        if (dwarf) {
           auto frames = { dwarf->debugFrame.get(), dwarf->ehFrame.get() };
-          for (auto frame : frames) {
-             if (frame) {
-                 fde = frame->findFDE(objaddr);
-                 if (fde)
+          for (auto f : frames) {
+             if (f) {
+                 fde = f->findFDE(objaddr);
+                 if (fde) {
+                    frameInfo = f;
                     break;
+                 }
              }
           }
           if (fde)
@@ -332,13 +334,11 @@ StackFrame::unwind(Process &p)
     if (!fde)
        return 0;
 
-    DWARFReader r(dwarf->info.io, fde->instructions, fde->end - fde->instructions, 0);
+    DWARFReader r(frameInfo->io, fde->instructions, fde->end - fde->instructions, 0);
 
     auto iter = dwarf->callFrameForAddr.find(objaddr);
-    if (iter == dwarf->callFrameForAddr.end()) {
-        const DwarfCallFrame frame = fde->cie->execInsns(r, fde->iloc, objaddr);
-        dwarf->callFrameForAddr[objaddr] = frame;
-    }
+    if (iter == dwarf->callFrameForAddr.end())
+        dwarf->callFrameForAddr[objaddr] = fde->cie->execInsns(r, fde->iloc, objaddr);
 
     const DwarfCallFrame &dcf = dwarf->callFrameForAddr[objaddr];
 
@@ -373,7 +373,7 @@ StackFrame::unwind(Process &p)
             case EXPRESSION: {
                 DwarfExpressionStack stack;
                 stack.push(cfa);
-                DWARFReader reader(dwarf->info.io, unwind.u.expression.offset, unwind.u.expression.length, 0);
+                DWARFReader reader(frameInfo->io, unwind.u.expression.offset, unwind.u.expression.length, 0);
                 auto val = stack.eval(p, reader, this);
                 // EXPRESSIONs give an address, VAL_EXPRESSION gives a literal.
                 if (unwind.type == EXPRESSION)
