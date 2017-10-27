@@ -185,9 +185,11 @@ mainExcept(int argc, char *argv[])
                 searchaddrs.back().second = strtoll(optarg, 0, 0);
                 break;
 
+#ifndef NO_THREADS
             case 'X':
                 ps_lgetfpregs(0, 0, 0);
                 break;
+#endif
 
             case 'l':
                 showloaded = true;

@@ -5,6 +5,7 @@ math(EXPR PLATFORM_BITS "${CMAKE_SIZEOF_VOID_P} * 8")
 set(PSTACK_BIN "pstack" CACHE STRING "Name of the 'pstack' binary")
 set(ELF_BITS ${PLATFORM_BITS} CACHE STRING "32 or 64 - set to 32 to build 32-bit binary on 64-bit platform")
 set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib" CACHE STRING "Rpath to install for binaries or the empty string")
+option(NO_THREADS "disable multithread support")
 
 set(LIBTYPE "STATIC" CACHE STRING "Build libraries as STATIC or SHARED")
 
@@ -15,8 +16,17 @@ if(PLATFORM_BITS EQUAL 64 AND ELF_BITS EQUAL 32)
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -m32")
 endif()
 
+if (NO_THREADS)
+    find_library(LTHREADDB NAMES thread_db PATHS (/usr/lib /usr/local/lib))
+    message("HAVE THREADS")
+    set(PROCSVC proc_service.cc)
+else()
+    add_definitions("-DNO_THREADS")
+    set(LTHREADDB "")
+    set(PROCSVC "")
+message("NO THREADS")
+endif()
 
-find_library(LTHREADDB NAMES thread_db PATHS (/usr/lib /usr/local/lib))
 find_package(LibLZMA)
 find_package(ZLIB)
 
@@ -38,8 +48,7 @@ include_directories("." ${LIBLZMA_INCLUDES} ${ZLIB_INCLUDES})
 
 add_library(dwelf ${LIBTYPE} dwarf.cc elf.cc reader.cc util.cc dump.cc
    ${inflatesrc} ${lzmasrc})
-add_library(procman ${LIBTYPE} dead.cc live.cc process.cc proc_service.cc
-   dwarfproc.cc procdump.cc ${stubsrc})
+add_library(procman ${LIBTYPE} dead.cc live.cc process.cc ${PROCSVC} dwarfproc.cc procdump.cc ${stubsrc})
 
 add_executable(canal canal.cc)
 add_executable(${PSTACK_BIN} pstack.cc)

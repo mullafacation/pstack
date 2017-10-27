@@ -18,6 +18,7 @@ struct ThreadLister {
 
     ThreadLister(Process *process_ ) : process(process_) {}
 
+#ifndef NO_THREADS
     void operator() (const td_thrhandle_t *thr) {
         CoreRegisters regs;
         td_err_e the;
@@ -32,6 +33,7 @@ struct ThreadLister {
             threadStacks.back().unwind(*process, regs);
         }
     }
+#endif
 };
 
 static int usage(void);
@@ -43,11 +45,13 @@ pstack(Process &proc, std::ostream &os, const PstackOptions &options)
     ThreadLister threadLister(&proc);
     {
         StopProcess here(&proc);
+#ifndef NO_THREADS
         proc.listThreads(threadLister);
+#endif
         if (threadLister.threadStacks.empty()) {
             // get the register for the process itself, and use those.
             CoreRegisters regs;
-            proc.getRegs(ps_getpid(&proc),  &regs);
+            proc.getRegs(proc.getPID(),  &regs);
             threadLister.threadStacks.push_back(ThreadStack());
             threadLister.threadStacks.back().unwind(proc, regs);
         }

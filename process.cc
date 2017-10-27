@@ -72,6 +72,7 @@ Process::load()
     else
         loadSharedObjects(r_debug_addr);
 
+#ifndef NO_THREADS
     td_err_e the;
     the = td_ta_new(this, &agent);
     if (the != TD_OK) {
@@ -79,6 +80,7 @@ Process::load()
         if (verbose && the != TD_NOLIBTHREAD)
             *debug << "failed to load thread agent: " << the << std::endl;
     }
+#endif
 }
 
 std::shared_ptr<DwarfInfo>
@@ -666,7 +668,9 @@ Process::findNamedSymbol(const char *objectName, const char *symbolName) const
 
 Process::~Process()
 {
+#ifndef NO_THREADS
     td_ta_delete(agent);
+#endif
 }
 
 void

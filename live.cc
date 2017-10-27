@@ -7,7 +7,9 @@
 #include <err.h>
 
 #include "libpstack/proc.h"
+#ifndef NO_THREADS
 #include "libpstack/ps_callback.h"
+#endif
 
 std::string
 procname(pid_t pid, const std::string &base)
@@ -85,6 +87,7 @@ LiveProcess::resume(lwpid_t pid)
     }
 }
 
+#ifndef NO_THREADS
 class StopLWP {
     LiveProcess *proc;
 public:
@@ -107,10 +110,14 @@ public:
     }
 };
 
+static void resumeThread(const td_thrhandle_t *thr) { td_thr_dbresume(thr); }
+#endif
+
 void
 LiveProcess::stopProcess()
 {
     stop(pid);
+#ifndef NO_THREADS
     // suspend everything quickly.
     StopLWP lister(this);
     listThreads(lister);
@@ -119,16 +126,17 @@ LiveProcess::stopProcess()
         stop(*lwp);
         i++;
     }
+#endif
 }
-
-static void resumeThread(const td_thrhandle_t *thr) { td_thr_dbresume(thr); }
 
 void
 LiveProcess::resumeProcess()
 {
+#ifndef NO_THREADS
     listThreads(resumeThread);
     for (auto lwp = lwps.begin(); lwp != lwps.end(); ++lwp)
         resume(*lwp);
+#endif
     resume(pid);
 }
 
